@@ -1,5 +1,6 @@
 import * as React from "react";
 import {
+  UIManager,
   StyleSheet,
   FlatListProps,
   View,
@@ -11,7 +12,8 @@ import {
   PanResponderGestureState,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  LayoutAnimation
+  LayoutAnimation,
+  Platform
 } from "react-native";
 
 const layoutAnimConfig = {
@@ -21,6 +23,13 @@ const layoutAnimConfig = {
     property: LayoutAnimation.Properties.scaleXY
   }
 };
+
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface Props<T>
   extends Omit<FlatListProps<T>, "renderItem" | "keyExtractor"> {
@@ -387,15 +396,6 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
     const key = keyExtractor(item, index);
 
     const ref = this.itemRefs.get(key);
-
-    if (placeholderIndex === index) {
-      console.log(
-        index,
-        key !== activeKey && placeholderIndex === index
-          ? { [horizontal ? "width" : "height"]: placeholderSize }
-          : undefined
-      );
-    }
 
     // 部分机型系统上，行元素在形状不发生改变的情况下交换位置后不会触发onLayout导致layout错误，这种方式会导致元素交换位置后重新创建，因为会触发onLayout，但是性能会下降
     return key === activeKey && placeholderIndex !== index ? null : (

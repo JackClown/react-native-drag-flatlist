@@ -16,6 +16,10 @@ const layoutAnimConfig = {
         property: react_native_1.LayoutAnimation.Properties.scaleXY
     }
 };
+if (react_native_1.Platform.OS === "android" &&
+    react_native_1.UIManager.setLayoutAnimationEnabledExperimental) {
+    react_native_1.UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 /**
  * react native drag flatlist
  * @param {boolean} [horizontal]
@@ -73,7 +77,7 @@ class DraggableFlatList extends React.Component {
                     else {
                         for (let index = 0; index < data.length; index++) {
                             const item = data[index];
-                            const ref = this.itemRefs.get(keyExtractor(item));
+                            const ref = this.itemRefs.get(keyExtractor(item, index));
                             if (ref && ref.element.current && ref.layout) {
                                 const { x, width, y, height } = ref.layout;
                                 let start;
@@ -134,7 +138,7 @@ class DraggableFlatList extends React.Component {
         this.updateRefs = (data) => {
             const { keyExtractor } = this.props;
             data.forEach((item, index) => {
-                const key = keyExtractor(item);
+                const key = keyExtractor(item, index);
                 if (!this.itemRefs.has(key)) {
                     this.itemRefs.set(key, { element: React.createRef() });
                 }
@@ -179,13 +183,8 @@ class DraggableFlatList extends React.Component {
         this.renderItem = ({ item, index }) => {
             const { keyExtractor, renderItem, horizontal } = this.props;
             const { placeholderSize, placeholderIndex, activeKey } = this.state;
-            const key = keyExtractor(item);
+            const key = keyExtractor(item, index);
             const ref = this.itemRefs.get(key);
-            if (placeholderIndex === index) {
-                console.log(index, key !== activeKey && placeholderIndex === index
-                    ? { [horizontal ? "width" : "height"]: placeholderSize }
-                    : undefined);
-            }
             // 部分机型系统上，行元素在形状不发生改变的情况下交换位置后不会触发onLayout导致layout错误，这种方式会导致元素交换位置后重新创建，因为会触发onLayout，但是性能会下降
             return key === activeKey && placeholderIndex !== index ? null : (<react_native_1.View style={[
                 horizontal ? styles.horizontal : styles.vertical,

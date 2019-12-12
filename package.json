@@ -1,6 +1,6 @@
 {
   "name": "react-native-drag-flatlist",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "draggable FlatList of react-native",
   "main": "index.js",
   "scripts": {

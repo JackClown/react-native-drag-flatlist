@@ -42,10 +42,11 @@ interface Props<T>
     index: number;
     drag: () => void;
   }) => React.ReactElement<any>;
+  autoscrollThreshold: number;
 }
 
 interface State {
-  activeKey: string | null;
+  activeIndex: number;
   hoverElement: React.ReactElement<any> | null;
   placeholderIndex: number;
   placeholderSize: number;
@@ -53,6 +54,7 @@ interface State {
 
 /**
  * react native drag flatlist
+ * @param {number} [autoscrollThreshold]
  * @param {boolean} [horizontal]
  * @param {T[]} data
  * @param {(item: T) => string} keyExtractor
@@ -61,12 +63,18 @@ interface State {
  */
 
 class DraggableFlatList<T> extends React.Component<Props<T>, State> {
+  static defaultProps = {
+    autoscrollThreshold: 0.05
+  };
+
   public state: State = {
-    activeKey: null,
+    activeIndex: -1,
     hoverElement: null,
     placeholderSize: 0,
     placeholderIndex: -1
   };
+
+  private dragging = false;
 
   private flatList = React.createRef<FlatList<T>>();
 
@@ -76,14 +84,9 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
 
   private container = React.createRef<View>();
 
-  private containerLayout = {
-    x: 0,
-    y: 0,
-    width: 0,
-    height: 0
-  };
+  private containerSize: number = 0;
 
-  private dragging = false;
+  private containerOffset: number = 0;
 
   private position: number = 0;
 
@@ -104,8 +107,6 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
     }
   > = new Map();
 
-  private keyIndexMap: Map<string, number> = new Map();
-
   private gestureState: PanResponderGestureState | null = null;
 
   private move = (
@@ -115,67 +116,69 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
     this.gestureState = gestrueState;
   };
 
+  private getPlaceIndex(offset: number) {
+    const { data, keyExtractor, horizontal } = this.props;
+    let nextIndex = -1;
+
+    for (let index = 0; index < data.length; index++) {
+      const item = data[index];
+
+      const ref = this.itemRefs.get(keyExtractor(item, index));
+
+      if (ref && ref.element.current && ref.layout) {
+        const { x, width, y, height } = ref.layout;
+        let start: number;
+        let end: number;
+
+        if (horizontal) {
+          start = x;
+          end = x + width;
+        } else {
+          start = y;
+          end = y + height;
+        }
+
+        if (offset >= start && offset < end) {
+          nextIndex = index;
+
+          if (offset >= (start + end) / 2) {
+            nextIndex += 1;
+          }
+
+          break;
+        }
+      }
+    }
+
+    return nextIndex;
+  }
+
   private release = (
     e: GestureResponderEvent,
     { moveY, moveX }: PanResponderGestureState
   ) => {
-    const { activeKey } = this.state;
+    const { activeIndex } = this.state;
 
-    if (activeKey !== null) {
-      const originIndex = this.keyIndexMap.get(activeKey);
+    if (activeIndex >= 0) {
+      const { data, onMoveEnd, horizontal } = this.props;
+      const relativeTouchPoint =
+        (horizontal ? moveX : moveY) - this.containerOffset;
 
-      if (originIndex === undefined) {
-        return;
-      }
-
-      const { data, keyExtractor, onMoveEnd, horizontal } = this.props;
-      const { x, width, y, height } = this.containerLayout;
-      const containerSize = horizontal ? width : height;
-      const relativeTouchPoint = horizontal ? moveX - x : moveY - y;
-      let nextIndex = -1;
-
-      if (relativeTouchPoint >= 0 && relativeTouchPoint <= containerSize) {
+      if (relativeTouchPoint >= 0 && relativeTouchPoint <= this.containerSize) {
         const offset = relativeTouchPoint + this.scrollOffset;
+        let nextIndex = -1;
 
         if (offset >= this.flatListContentSize) {
           nextIndex = data.length;
         } else {
-          for (let index = 0; index < data.length; index++) {
-            const item = data[index];
-
-            const ref = this.itemRefs.get(keyExtractor(item, index));
-
-            if (ref && ref.element.current && ref.layout) {
-              const { x, width, y, height } = ref.layout;
-              let start: number;
-              let end: number;
-
-              if (horizontal) {
-                start = x;
-                end = x + width;
-              } else {
-                start = y;
-                end = y + height;
-              }
-
-              if (offset >= start && offset < end) {
-                if (offset < (end + start) / 2) {
-                  nextIndex = index;
-                } else {
-                  nextIndex = index + 1;
-                }
-
-                break;
-              }
-            }
-          }
+          nextIndex = this.getPlaceIndex(offset);
         }
 
-        if (nextIndex >= 0 && nextIndex !== originIndex) {
-          const item = data[originIndex];
+        if (nextIndex >= 0 && nextIndex !== activeIndex) {
+          const item = data[activeIndex];
           const nextData: (T | undefined)[] = [...data];
 
-          nextData[originIndex] = undefined;
+          nextData[activeIndex] = undefined;
           nextData.splice(nextIndex, 0, item);
 
           const index = nextData.findIndex(item => item === undefined);
@@ -194,7 +197,7 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
 
     this.setState({
       hoverElement: null,
-      activeKey: null,
+      activeIndex: -1,
       placeholderIndex: -1,
       placeholderSize: 0
     });
@@ -224,8 +227,6 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
       if (!this.itemRefs.has(key)) {
         this.itemRefs.set(key, { element: React.createRef() });
       }
-
-      this.keyIndexMap.set(key, index);
     });
   };
 
@@ -274,18 +275,25 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
     if (this.container.current) {
       this.container.current.measureInWindow(
         (x: number, y: number, width: number, height: number) => {
-          this.containerLayout = {
-            x,
-            y,
-            width,
-            height
-          };
+          const { horizontal } = this.props;
+
+          if (horizontal) {
+            this.containerSize = width;
+            this.containerOffset = x;
+          } else {
+            this.containerSize = height;
+            this.containerOffset = y;
+          }
         }
       );
     }
   };
 
-  private drag = (hoverElement: React.ReactElement<any>, key: string) => {
+  private drag = (
+    hoverElement: React.ReactElement<any>,
+    key: string,
+    index: number
+  ) => {
     const item = this.itemRefs.get(key);
 
     if (item && item.layout) {
@@ -298,8 +306,8 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
       this.setState(
         {
           hoverElement,
-          activeKey: key,
-          placeholderIndex: this.keyIndexMap.get(key) ?? -1,
+          activeIndex: index,
+          placeholderIndex: index,
           placeholderSize: horizontal ? width : height
         },
         () => {
@@ -311,56 +319,35 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
 
   private animate() {
     if (this.gestureState && this.flatList.current) {
-      const { horizontal } = this.props;
-      const { x, width, y, height } = this.containerLayout;
+      const { horizontal, autoscrollThreshold } = this.props;
       const { moveX, vx, moveY, vy } = this.gestureState;
 
-      const containerSize = horizontal ? width : height;
-      const relativeTouchPoint = horizontal ? moveX - x : moveY - y;
-      const velocity = horizontal ? vx : vy;
+      let relativeTouchPoint, velocity;
 
-      if (relativeTouchPoint >= 0 && relativeTouchPoint <= height) {
+      if (horizontal) {
+        relativeTouchPoint = moveX - this.containerOffset;
+        velocity = vx;
+      } else {
+        relativeTouchPoint = moveY - this.containerOffset;
+        velocity = vy;
+      }
+
+      if (relativeTouchPoint >= 0 && relativeTouchPoint <= this.containerSize) {
         let offset = this.scrollOffset;
 
         if (
-          relativeTouchPoint <= containerSize * 0.05 &&
+          relativeTouchPoint <= this.containerSize * autoscrollThreshold &&
           this.scrollOffset > 0
         ) {
           offset -= 5;
         } else if (
-          relativeTouchPoint >= containerSize * 0.95 &&
-          this.flatListContentSize - this.scrollOffset > containerSize
+          relativeTouchPoint >=
+            this.containerSize * (1 - autoscrollThreshold) &&
+          this.flatListContentSize - this.scrollOffset > this.containerSize
         ) {
           offset += 5;
         } else if (Math.abs(velocity) <= 0.05) {
-          const point = offset + relativeTouchPoint;
-          let index = -1;
-
-          for (let [key, item] of this.itemRefs) {
-            if (item.element.current && item.layout) {
-              const { x, width, y, height } = item.layout;
-              let start: number;
-              let end: number;
-
-              if (horizontal) {
-                start = x;
-                end = x + width;
-              } else {
-                start = y;
-                end = y + height;
-              }
-
-              if (point >= start && point < end) {
-                index = this.keyIndexMap.get(key)!;
-
-                if (point >= (start + end) / 2) {
-                  index += 1;
-                }
-
-                break;
-              }
-            }
-          }
+          let index = this.getPlaceIndex(offset + relativeTouchPoint);
 
           if (index >= 0 && index !== this.state.placeholderIndex) {
             LayoutAnimation.configureNext(layoutAnimConfig);
@@ -391,18 +378,18 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
 
   private renderItem = ({ item, index }: { item: T; index: number }) => {
     const { keyExtractor, renderItem, horizontal } = this.props;
-    const { placeholderSize, placeholderIndex, activeKey } = this.state;
+    const { placeholderSize, placeholderIndex, activeIndex } = this.state;
 
     const key = keyExtractor(item, index);
 
     const ref = this.itemRefs.get(key);
 
     // 部分机型系统上，行元素在形状不发生改变的情况下交换位置后不会触发onLayout导致layout错误，这种方式会导致元素交换位置后重新创建，因为会触发onLayout，但是性能会下降
-    return key === activeKey && placeholderIndex !== index ? null : (
+    return activeIndex === index && placeholderIndex !== index ? null : (
       <View
         style={[
           horizontal ? styles.horizontal : styles.vertical,
-          key === activeKey ? { opacity: 0 } : undefined
+          activeIndex === index ? { opacity: 0 } : undefined
         ]}
       >
         <View
@@ -413,7 +400,7 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
         />
         <View
           style={
-            key !== activeKey && placeholderIndex === index
+            activeIndex !== index && placeholderIndex === index
               ? { [horizontal ? "width" : "height"]: placeholderSize }
               : undefined
           }
@@ -495,7 +482,11 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
 export default DraggableFlatList;
 
 interface RowProps<T> {
-  drag: (hoverElement: React.ReactElement<any>, itemKey: string) => void;
+  drag: (
+    hoverElement: React.ReactElement<any>,
+    itemKey: string,
+    index: number
+  ) => void;
   item: T;
   itemKey: string;
   index: number;
@@ -510,10 +501,10 @@ export class Row<T> extends React.PureComponent<RowProps<T>> {
       index,
       drag: () => console.log("## attempt to call drag() on hovering component")
     });
-    drag(hoverElement, itemKey);
+    drag(hoverElement, itemKey, index);
   };
 
-  render() {
+  public render() {
     const { renderItem, item, index } = this.props;
 
     return renderItem({

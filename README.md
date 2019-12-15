@@ -10,12 +10,14 @@ Support typescript.
 
 all props will be spread onto `FlatList`
 
-| Name         | Type                                                                               |
-| ------------ | ---------------------------------------------------------------------------------- |
-| data         | T[]                                                                                |
-| renderItem   | (params: { item: T; index: number; drag: () => void; }) => React.ReactElement<any> |
-| keyExtractor | (item: T, index: number) => string                                                 |
-| onMoveEnd    | (data: T[]) => void                                                                |
+| Name                | Type                                                                               | Description                                                                                 |
+| ------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| data                | T[]                                                                                | items to be rendered                                                                        |
+| renderItem          | (params: { item: T; index: number; drag: () => void; }) => React.ReactElement<any> | when need to drag the item, call drag method                                                |
+| keyExtractor        | (item: T, index: number) => string                                                 | to get unique key                                                                           |
+| onMoveEnd           | (data: T[]) => void                                                                | called when drag end, return the updated data                                               |
+| horizontal          | boolean                                                                            | orientation of list                                                                         |
+| autoscrollThreshold | number                                                                             | distance from edge of container where list begins to autoscroll when dragging. default 0.05 |
 
 ### Example
 

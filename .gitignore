@@ -11,3 +11,5 @@ yarn-error.log
 # watchman
 #
 .watchmanconfig
+
+index.js

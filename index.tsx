@@ -264,7 +264,7 @@ class DraggableFlatList<T> extends React.Component<Props<T>, State> {
           this.containerOffset = x;
         } else {
           this.containerSize = height;
-          this.containerOffset = y + Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0;
+          this.containerOffset = y + (Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0);
         }
       });
     }
